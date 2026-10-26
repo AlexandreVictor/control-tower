@@ -1,0 +1,47 @@
+bundle:
+  name: minha-torre
+
+variables:
+  sql_warehouse_id:
+    description: SQL Warehouse ID
+  genie_space_id:
+    description: Id do espaço Genie "Farol · Diretoria"
+    default: 01f1d0c56cb91fb6bb50c37c4a88979b
+  genie_space_name:
+    description: Nome do espaço Genie usado pela Torre
+    default: "Farol · Diretoria"
+
+resources:
+  apps:
+    app:
+      name: 'minha-torre'
+      description: 'A Databricks App powered by AppKit'
+      source_code_path: ./
+
+      # Start the app automatically on deploy.
+      lifecycle:
+        started: true
+      # O Genie roda em nome do usuário (OBO): pede o escopo do Genie.
+      user_api_scopes:
+        - dashboards.genie
+
+      # The resources which this app has access to.
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.sql_warehouse_id}
+            permission: CAN_USE
+        - name: genie-space
+          genie_space:
+            name: ${var.genie_space_name}
+            space_id: ${var.genie_space_id}
+            permission: CAN_RUN
+
+targets:
+  default:
+    default: true
+    workspace:
+      host: https://dbc-2f7dcf24-1d1a.cloud.databricks.com
+
+    variables:
+      sql_warehouse_id: 1947e571420d33f9

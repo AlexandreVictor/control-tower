@@ -1,0 +1,50 @@
+# Projeto Farol · a Torre de Controle da Vértice Tecnologia.
+#
+# Bundle declarativo (DABs) para orquestração da Torre de Controle:
+# ingestão -> conferência da bronze -> medalhão silver -> gold -> testes -> IA -> dashboard.
+
+bundle:
+  name: vertice
+
+include:
+  - resources/*.yml
+
+# O app Databricks Apps "minha-torre" é um bundle próprio dentro da pasta.
+# Sem esta exclusão, o deploy do vertice sobe node_modules do app inteiro.
+sync:
+  exclude:
+    - "minha-torre/**"
+
+variables:
+  catalog:
+    description: Catálogo do Unity Catalog onde as três camadas moram
+    default: lakehouse_vertice
+  warehouse_id:
+    description: SQL Warehouse serverless que executa as tarefas SQL
+    default: 1947e571420d33f9
+  s3_endpoint:
+    description: Endereço S3 do Supabase Storage
+    default: https://jpcelyymuxloalfaughs.storage.supabase.co/storage/v1/s3
+  s3_regiao:
+    description: Região do Supabase Storage
+    default: us-east-1
+  s3_access_key_id:
+    description: Chave de acesso do data lake (segredo, fora do Git)
+  s3_secret_access_key:
+    description: Segredo do data lake (segredo, fora do Git)
+
+targets:
+  dev:
+    default: true
+    # Sem 'mode: development' para evitar prefixação nos nomes das tabelas e do pipeline.
+    # O preset garante que agendamentos fiquem pausados.
+    presets:
+      trigger_pause_status: PAUSED
+
+  prod:
+    mode: production
+    workspace:
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    permissions:
+      - user_name: ${workspace.current_user.userName}
+        level: CAN_MANAGE

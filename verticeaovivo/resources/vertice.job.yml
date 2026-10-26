@@ -1,0 +1,95 @@
+# Job da Torre de Controle · Vértice Tecnologia
+#
+# Orquestração ponta a ponta com 7 tarefas:
+#   1. ingestao_feriados: Ingestão de feriados nacionais via API BrasilAPI para a bronze (notebook)
+#   2. ingestao_data_lake: Ingestão de dados brutos do S3/Supabase Storage para a bronze (notebook)
+#      [ingestao_feriados e ingestao_data_lake rodam em paralelo]
+#   3. conferencia_bronze: Validação de integridade e completude das tabelas bronze (sql_task)
+#   4. medalhao: Pipeline Lakeflow DLT processando as camadas silver e gold (pipeline_task)
+#   5. testes_de_qualidade: 10 testes rigorosos de qualidade de dados com raise_error (sql_task)
+#   6. status_com_ia: Estruturação dos status semanais via funções de IA e regras (sql_task)
+#   7. metricas_governadas: Metric view gov. com as fórmulas dos KPIs (sql_task)
+#      [testes_de_qualidade e status_com_ia rodam em paralelo após o medalhao;
+#       metricas_governadas depende dos dois]
+#
+# Agendamento: toda segunda-feira às 06:00 (America/Sao_Paulo).
+# max_concurrent_runs: 1 (evita conflito concorrente de escrita/limpeza na bronze).
+
+resources:
+  jobs:
+    vertice_farol:
+      name: vertice_farol
+      description: Projeto Farol da Vértice Tecnologia. Ingestão do data lake, conferência da bronze, medalhão silver e gold, testes de qualidade e enriquecimento de status com IA.
+
+      schedule:
+        quartz_cron_expression: "0 0 6 ? * MON"
+        timezone_id: America/Sao_Paulo
+        pause_status: PAUSED
+
+      max_concurrent_runs: 1
+
+      environments:
+        - environment_key: padrao
+          spec:
+            environment_version: "6"
+
+      tasks:
+        # ── 0. Ingestão ───────────────────────────────────────────────
+        - task_key: ingestao_feriados
+          environment_key: padrao
+          notebook_task:
+            notebook_path: ../src/ingestao/01_ingestao_api.py
+
+        - task_key: ingestao_data_lake
+          environment_key: padrao
+          notebook_task:
+            notebook_path: ../src/ingestao/02_ingestao_boto3.py
+            base_parameters:
+              S3_ENDPOINT: ${var.s3_endpoint}
+              AWS_DEFAULT_REGION: ${var.s3_regiao}
+              AWS_ACCESS_KEY_ID: ${var.s3_access_key_id}
+              AWS_SECRET_ACCESS_KEY: ${var.s3_secret_access_key}
+
+        # ── 1. Conferência da bronze ──────────────────────────────────
+        - task_key: conferencia_bronze
+          depends_on:
+            - task_key: ingestao_feriados
+            - task_key: ingestao_data_lake
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/conferencia/00-conferencia-bronze.sql
+
+        # ── 2. Medalhão (Pipeline Lakeflow: Silver + Gold) ─────────────
+        - task_key: medalhao
+          depends_on:
+            - task_key: conferencia_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.vertice_medalhao.id}
+
+        # ── 3. Pós-medalhão: Testes de qualidade e Status com IA em paralelo ──
+        - task_key: testes_de_qualidade
+          depends_on:
+            - task_key: medalhao
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/testes/testes.sql
+
+        - task_key: status_com_ia
+          depends_on:
+            - task_key: medalhao
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/ia/status_estruturado.sql
+
+        # ── 4. Métricas governadas (metric view) ────────────────────
+        - task_key: metricas_governadas
+          depends_on:
+            - task_key: testes_de_qualidade
+            - task_key: status_com_ia
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ../src/metricas/metricas.sql

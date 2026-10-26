@@ -1,0 +1,156 @@
+{
+  "version": 2,
+  "config": {
+    "sample_questions": [
+      {
+        "id": "1ca2d9dc042a47a9ae04ec2b09e8280f",
+        "question": [
+          "Quanto esse atraso vai me custar?"
+        ]
+      },
+      {
+        "id": "294e263700cb405facbf84fd681f635a",
+        "question": [
+          "Tenho gente parada enquanto outro projeto pede gente?"
+        ]
+      },
+      {
+        "id": "4d4da7c56525402ea66cfda3318652f2",
+        "question": [
+          "Quais projetos estão atrasados, e de quais clientes?"
+        ]
+      },
+      {
+        "id": "aa62a37cfb104f4cbb0555c97b1a1984",
+        "question": [
+          "O que vai dar errado no próximo mês?"
+        ]
+      }
+    ]
+  },
+  "data_sources": {
+    "tables": [
+      {
+        "identifier": "lakehouse_vertice.gold.fato_projeto_semana"
+      },
+      {
+        "identifier": "lakehouse_vertice.gold.mv_projetos"
+      },
+      {
+        "identifier": "lakehouse_vertice.gold.projeto_situacao_atual"
+      },
+      {
+        "identifier": "lakehouse_vertice.gold.status_estruturado"
+      },
+      {
+        "identifier": "lakehouse_vertice.gold.utilizacao_pessoa_semana"
+      },
+      {
+        "identifier": "lakehouse_vertice.silver.entregas_fornecedor"
+      }
+    ]
+  },
+  "instructions": {
+    "example_question_sqls": [
+      {
+        "id": "105f9dde581a4065ae10e773fc1608e9",
+        "question": [
+          "O que vai dar errado no próximo mês?"
+        ],
+        "sql": [
+          "SELECT\n",
+          "  e.projeto_id,\n",
+          "  p.projeto,\n",
+          "  e.fornecedor,\n",
+          "  e.item,\n",
+          "  e.data_prometida,\n",
+          "  e.dias_de_atraso_na_entrega\n",
+          "FROM lakehouse_vertice.silver.entregas_fornecedor e\n",
+          "JOIN lakehouse_vertice.gold.projeto_situacao_atual p\n",
+          "  ON p.projeto_id = e.projeto_id\n",
+          "WHERE e.em_atraso\n",
+          "ORDER BY e.dias_de_atraso_na_entrega DESC"
+        ]
+      },
+      {
+        "id": "8e9d10b26a3343ba93471b97d2c32204",
+        "question": [
+          "Quanto esse atraso vai me custar?"
+        ],
+        "sql": [
+          "SELECT\n",
+          "  ROUND(MEASURE(estouro_previsto), 0) AS estouro_previsto,\n",
+          "  ROUND(MEASURE(margem_projetada), 4) AS margem_projetada\n",
+          "FROM lakehouse_vertice.gold.mv_projetos"
+        ]
+      },
+      {
+        "id": "a3ee532a3dbd4f2eb6a82538143ba196",
+        "question": [
+          "Quais projetos estão atrasados, e de quais clientes?"
+        ],
+        "sql": [
+          "SELECT\n",
+          "  projeto,\n",
+          "  cliente,\n",
+          "  situacao,\n",
+          "  farol_do_gerente,\n",
+          "  farol_calculado,\n",
+          "  ROUND(spi, 2) AS spi,\n",
+          "  ROUND(cpi, 2) AS cpi,\n",
+          "  atraso_projetado_dias\n",
+          "FROM lakehouse_vertice.gold.projeto_situacao_atual\n",
+          "WHERE status = 'em_andamento'\n",
+          "  AND situacao <> 'ok'\n",
+          "ORDER BY atraso_projetado_dias DESC"
+        ]
+      },
+      {
+        "id": "f5c658a247464f6f8df788a608dc4e3e",
+        "question": [
+          "Tenho gente parada enquanto outro projeto pede gente?"
+        ],
+        "sql": [
+          "SELECT\n",
+          "  colaborador_id,\n",
+          "  nome,\n",
+          "  papel,\n",
+          "  projeto,\n",
+          "  ROUND(SUM(horas_apontadas) / NULLIF(SUM(horas_disponiveis), 0), 4) AS utilizacao_12_semanas,\n",
+          "  SUM(horas_ociosas)                                                AS horas_ociosas,\n",
+          "  SUM(custo_ocioso)                                                 AS custo_ocioso\n",
+          "FROM lakehouse_vertice.gold.utilizacao_pessoa_semana\n",
+          "WHERE semana > DATE'2026-07-24'\n",
+          "GROUP BY colaborador_id, nome, papel, projeto\n",
+          "HAVING utilizacao_12_semanas < 0.2\n",
+          "ORDER BY custo_ocioso DESC"
+        ]
+      }
+    ],
+    "text_instructions": [
+      {
+        "id": "440b3ef3c74b4908bef7efafe5880596",
+        "content": [
+          "* Quem pergunta é o dono da Vértice Tecnologia e a diretoria: responda em português claro, sem jargão, e mostre a conta por trás dos números quando fizer sentido.\n",
+          "* HOJE é DATE'2026-10-16' (sexta-feira). Nunca use current_date(): todo número congelou nessa data e tem que bater com a Torre e com o job.\n",
+          "* Janelas de tempo fixas: \"últimos 90 dias\" = data_status >= DATE'2026-07-18'. \"Últimas 12 semanas\" = semana > DATE'2026-07-24'. \"Próximo mês\" = da data de hoje até 2026-11-15 (30 dias à frente).\n",
+          "* Fórmula de cada KPI: SPI = EV / PV. CPI = EV / AC. EAC = orçamento / CPI. Estouro previsto = EAC - orçamento, só quando positivo. Margem projetada = (valor do contrato - EAC) / valor do contrato. Atraso projetado em dias = duração do baseline / SPI - duração do baseline.\n",
+          "* Regras de corte: SPI ou CPI < 0,9 = atenção, e < 0,8 = crítico. Farol calculado (manual da Vértice): verde com SPI >= 0,95, amarelo com SPI >= 0,90, vermelho abaixo de 0,90.\n",
+          "* Melancia: farol do gerente verde com SPI < 0,9 (bonita por fora, nada saudável por dentro). Aponte melancias em toda resposta de risco.\n",
+          "* Totais da carteira (quantos, SPI, CPI, estouro, margem, atraso médio) SEMPRE da metric view lakehouse_vertice.gold.mv_projetos com MEASURE(...): é lá que as fórmulas moram. Ranking e detalhe por projeto (contrato, datas, farol, gerente, cliente) vêm de lakehouse_vertice.gold.projeto_situacao_atual.\n",
+          "* Referências a códigos (PRJ-011, COL0102) são IGUALDADE: projeto_id = 'PRJ-011', colaborador_id = 'COL0102'. Nunca use ILIKE/LIKE para buscar um código — ILIKE '%PRJ-011%' traz projetos demais.\n",
+          "* \"Código do projeto\" na resposta é a coluna projeto, que traz 'PRJ-xxx · nome' (só projeto_id é o código puro).\n",
+          "* Os valores da coluna situacao levam acento: 'ok', 'atenção', 'crítico' (e 'concluído' fora de em_andamento). Use 'atenção' e 'crítico' exatamente assim — sem acento não existe.\n",
+          "* SPI, CPI, EAC, estouro previsto, margem e atraso de UM projeto específico vem da fotografia de hoje (projeto_situacao_atual), não do fato semanal: gold.fato_projeto_semana é só para a evolução por semana.\n",
+          "* Na lakehouse_vertice.gold.fato_projeto_semana, PV, EV e AC são ACUMULADOS até a semana: NUNCA some valores de semanas diferentes (SUM(pv) numa agregação por semana dobraria o PV). Para o estado acumulado de um projeto, pegue a linha da última semana do período. A última semana do dataset é DATE'2026-10-16'.\n",
+          "* \"Por que o projeto X atrasou?\" responda com lakehouse_vertice.gold.status_estruturado dos últimos 90 dias, descartando causa_bloqueio 'sem_bloqueio' e 'nao_reportado': agrupe por causa, conte as semanas e some os dias_impacto. Se a causa principal for falta_sre, traga também os SREs com utilização < 20% nas últimas 12 semanas (são eles que destravam).\n",
+          "* \"Tenho gente parada?\" = pessoa com utilização < 0,2 nas últimas 12 semanas: em gold.utilizacao_pessoa_semana, agrupado por colaborador, SUM(horas_apontadas) / SUM(horas_disponiveis) com HAVING abaixo de 0,2. Mostre papel, projeto, horas ociosas e custo ocioso (custo_ocioso, em reais).\n",
+          "* Fornecedor: índice de atraso = prazo real ÷ prazo prometido, na lakehouse_vertice.silver.entregas_fornecedor (AVG(prazo_real_dias) / AVG(prazo_prometido_dias) por fornecedor). A CodeForge Consultoria Ltda marca 1,41: nenhuma entrega no prazo.\n",
+          "* \"O que vai dar errado no próximo mês?\" junta dois sinais: (1) as entregas de consultoria em atraso hoje (silver.entregas_fornecedor WHERE em_atraso, com projeto, fornecedor e dias de atraso) e (2) o change freeze do varejo de 01/11/2026 a 10/01/2027 nos projetos de e-commerce em andamento (status = 'em_andamento' e lower(tipo_projeto) com commerce, checkout ou marketplace) — cronograma não avança nessa janela, então o atraso projetado só cresce.\n",
+          "* \"Quais clientes ...?\" devolve cada cliente UMA vez (SELECT DISTINCT cliente).\n",
+          "* Toda resposta termina com uma ação sugerida ao dono: onde agir primeiro, com números, em reais quando couber."
+        ]
+      }
+    ]
+  }
+}
