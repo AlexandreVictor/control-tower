@@ -45,8 +45,8 @@ S3_ENDPOINT = "https://jpcelyymuxloalfaughs.storage.supabase.co/storage/v1/s3"
 S3_REGION = "us-east-1"
 S3_BUCKET = "DatalakeVertice"
 
-ACCESS_KEY = "42b301689cb0011c92c9e11f32328349"     # passada na aula
-SECRET_KEY = "f745107d495b2fad1eca3f7066ab63ae0acad933043f7864217c5e275c5ad7fb"     # passada na aula
+# As chaves (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY) vêm do ambiente:
+# do job (Parameters / Environment variables) ou das caixinhas no topo.
 
 # COMMAND ----------
 
